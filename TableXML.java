@@ -1,16 +1,12 @@
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
-import org.xml.sax.Attributes;
-import org.xml.sax.SAXException;
-import org.xml.sax.helpers.DefaultHandler;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 import java.awt.*;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.LinkedList;
+
 public class TableXML extends JFrame {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
@@ -21,7 +17,7 @@ public class TableXML extends JFrame {
 
     private JTable table;
     private DefaultTableModel model;
-    private Map<String, Integer> columnIndexes = new HashMap<>();
+    private SaxHandler saxHandler;
 
     public TableXML() {
         VentanaXML();
@@ -52,62 +48,33 @@ public class TableXML extends JFrame {
 
         if (result == JFileChooser.APPROVE_OPTION) {
             File file = fileChooser.getSelectedFile();
-            cargarDatosXML(file);
-        }
-    }
+            saxHandler = new SaxHandler(model);
 
-    private void cargarDatosXML(File file) {
-        model.setRowCount(0);
-        model.setColumnCount(0);
-        columnIndexes.clear();
+            try {
+                SAXParserFactory factory = SAXParserFactory.newInstance();
+                SAXParser saxParser = factory.newSAXParser();
 
-        try {
-            SAXParserFactory factory = SAXParserFactory.newInstance();
-            SAXParser saxParser = factory.newSAXParser();
+                saxParser.parse(file, saxHandler);
 
-            DefaultHandler handler = new DefaultHandler() {
-                private List<String> rowData = new ArrayList<>();
-                private String currentElement;
+                LinkedList<String> columnNames = saxHandler.getKeys();
+                model.setColumnIdentifiers(columnNames.toArray());
 
-                @Override
-                public void startElement(String uri, String localName, String qName, Attributes attributes)
-                        throws SAXException {
-                    currentElement = qName;
-                    if (!columnIndexes.containsKey(qName)) {
-                        int columnIndex = model.getColumnCount();
-                        columnIndexes.put(qName, columnIndex);
-                        model.addColumn(qName);
+                ArrayList<String> rowData = saxHandler.getDatos();
+                int columnCounter = columnNames.size();
+                int rowCounter = rowData.size() / columnCounter;
+
+                for (int i = 0; i < rowCounter; i++) {
+                    ArrayList<String> row = new ArrayList<>();
+                    for (int j = 0; j < columnCounter; j++) {
+                        row.add(rowData.get(i * columnCounter + j));
                     }
+                    model.addRow(row.toArray());
                 }
 
-                @Override
-                public void characters(char[] ch, int start, int length) throws SAXException {
-                    if (currentElement != null) {
-                        String value = new String(ch, start, length).trim();
-                        if (!value.isEmpty()) {
-                            int columnIndex = columnIndexes.get(currentElement);
-                            while (rowData.size() <= columnIndex) {
-                                rowData.add("");
-                            }
-                            rowData.set(columnIndex, value);
-                        }
-                    }
-                }
-
-                @Override
-                public void endElement(String uri, String localName, String name) throws SAXException {
-                    if ("CD".equals(name)) {
-                        model.addRow(rowData.toArray());
-                        rowData.clear();
-                    }
-                    currentElement = null;
-                }
-            };
-
-            saxParser.parse(file, handler);
-        } catch (Exception e) {
-            e.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Error al cargar el archivo XML", "Error", JOptionPane.ERROR_MESSAGE);
+            } catch (Exception e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(this, "Error al cargar el archivo XML", "Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 }
