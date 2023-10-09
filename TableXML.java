@@ -1,31 +1,27 @@
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
+import org.xml.sax.Attributes;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.io.File;
 import java.util.ArrayList;
-
-
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 public class TableXML extends JFrame {
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                TableXML app = new TableXML();
-                app.setVisible(true);
-            }
-        }
-        );
+        SwingUtilities.invokeLater(() -> {
+            TableXML app = new TableXML();
+            app.setVisible(true);
+        });
     }
 
     private JTable table;
     private DefaultTableModel model;
+    private Map<String, Integer> columnIndexes = new HashMap<>();
 
     public TableXML() {
         VentanaXML();
@@ -38,12 +34,7 @@ public class TableXML extends JFrame {
         setLocationRelativeTo(null);
 
         JButton load = new JButton("Cargar XML");
-        load.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                cargarXML();
-            }
-        });
+        load.addActionListener(e -> cargarXML());
 
         model = new DefaultTableModel();
         table = new JTable(model);
@@ -68,59 +59,55 @@ public class TableXML extends JFrame {
     private void cargarDatosXML(File file) {
         model.setRowCount(0);
         model.setColumnCount(0);
+        columnIndexes.clear();
 
         try {
-            DocumentBuilderFactory bdfactory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = bdfactory.newDocumentBuilder();
-            Document doc = builder.parse(file);
+            SAXParserFactory factory = SAXParserFactory.newInstance();
+            SAXParser saxParser = factory.newSAXParser();
 
-            Element root = doc.getDocumentElement();
-            NodeList nodeList = root.getChildNodes();
+            DefaultHandler handler = new DefaultHandler() {
+                private List<String> rowData = new ArrayList<>();
+                private String currentElement;
 
-            ArrayList<String> columnNames = new ArrayList<>();
-            for (int i = 0; i < nodeList.getLength(); i++) {
-                if (nodeList.item(i) instanceof Element) {
-                    Element element = (Element) nodeList.item(i);
-                    NodeList childNodes = element.getChildNodes();
+                @Override
+                public void startElement(String uri, String localName, String qName, Attributes attributes)
+                        throws SAXException {
+                    currentElement = qName;
+                    if (!columnIndexes.containsKey(qName)) {
+                        int columnIndex = model.getColumnCount();
+                        columnIndexes.put(qName, columnIndex);
+                        model.addColumn(qName);
+                    }
+                }
 
-                    for (int j = 0; j < childNodes.getLength(); j++) {
-                        if (childNodes.item(j) instanceof Element) {
-                            String columnName = childNodes.item(j).getNodeName();
-                            if (!columnNames.contains(columnName)) {
-                                columnNames.add(columnName);
+                @Override
+                public void characters(char[] ch, int start, int length) throws SAXException {
+                    if (currentElement != null) {
+                        String value = new String(ch, start, length).trim();
+                        if (!value.isEmpty()) {
+                            int columnIndex = columnIndexes.get(currentElement);
+                            while (rowData.size() <= columnIndex) {
+                                rowData.add("");
                             }
+                            rowData.set(columnIndex, value);
                         }
                     }
                 }
-            }
 
-            model.setColumnIdentifiers(columnNames.toArray());
-
-            for (int i = 0; i < nodeList.getLength(); i++) {
-                if (nodeList.item(i) instanceof Element) {
-                    Element element = (Element) nodeList.item(i);
-                    NodeList childNodes = element.getChildNodes();
-                    Object[] rowData = new Object[columnNames.size()];
-
-                    for (int j = 0; j < childNodes.getLength(); j++) {
-                        if (childNodes.item(j) instanceof Element) {
-                            String columnName = childNodes.item(j).getNodeName();
-                            String columnInfo = childNodes.item(j).getTextContent();
-                            int columnIndex = columnNames.indexOf(columnName);
-                            rowData[columnIndex] = columnInfo;
-                        }
+                @Override
+                public void endElement(String uri, String localName, String name) throws SAXException {
+                    if ("CD".equals(name)) {
+                        model.addRow(rowData.toArray());
+                        rowData.clear();
                     }
-
-                    model.addRow(rowData);
+                    currentElement = null;
                 }
-            }
-            table.setModel(model);
+            };
 
+            saxParser.parse(file, handler);
         } catch (Exception e) {
             e.printStackTrace();
             JOptionPane.showMessageDialog(this, "Error al cargar el archivo XML", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
-
-
 }
